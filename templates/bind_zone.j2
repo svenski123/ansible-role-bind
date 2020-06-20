@@ -9,19 +9,36 @@
 {% set _ = _zone_data.update({'mname': item.name_servers|default([])}) %}
 {% set _ = _zone_data.update({'aname': item.other_name_servers|default([])}) %}
 {% set _ = _zone_data.update({'mail': item.mail_servers|default([])}) %}
+{% for mail in _zone_data.mail %}
+{%   set _ = mail.setdefault('zone', '') %}
+{% endfor %}
 {% if item.hostmaster_email is defined %}
-{% set _ = _zone_data.update({'rname': (( item.hostmaster_email )) + ('' if (item.hostmaster_email is search('\.')) else ('.' + _zone_data['domain']))}) %}
+{%   set _ = _zone_data.update({'rname': (( item.hostmaster_email )) + ('' if (item.hostmaster_email is search('\.')) else ('.' + _zone_data['domain']))}) %}
 {% else %}
-{% set _ = _zone_data.update({'rname': 'hostmaster.' + _zone_data['domain']}) %}
+{%   set _ = _zone_data.update({'rname': 'hostmaster.' + _zone_data['domain']}) %}
 {% endif %}
 {% set _ = _zone_data.update({'refresh': bind_zone_time_to_refresh}) %}
 {% set _ = _zone_data.update({'retry': bind_zone_time_to_retry}) %}
 {% set _ = _zone_data.update({'expire': bind_zone_time_to_expire}) %}
 {% set _ = _zone_data.update({'minimum': bind_zone_minimum_ttl}) %}
 {% set _ = _zone_data.update({'hosts': item.hosts|default([])}) %}
+{% for host in _zone_data.hosts %}
+{%   if host.aliases is undefined %}
+{%     set _ = host.update({'aliases': []}) %}
+{%   elif host.aliases is string %}
+{%     set _ = host.update({'aliases': [host.aliases]}) %}
+{%   endif %}
+{% endfor %}
 {% set _ = _zone_data.update({'delegate': item.delegate|default([])}) %}
 {% set _ = _zone_data.update({'services': item.services|default([])}) %}
 {% set _ = _zone_data.update({'text': item.text|default([])}) %}
+{% for text in _zone_data.text %}
+{%   if text.text is undefined %}
+{%     set _ = text.update({'text': []}) %}
+{%   elif text.text is string %}
+{%     set _ = text.update({'text': [text.text]}) %}
+{%   endif %}
+{% endfor %}
 {% set _ = _zone_data.update({'naptr': item.naptr|default([])}) %}
 {#
  #  Compare the zone file hash with the current zone data hash and set serial
@@ -70,7 +87,7 @@ $TTL {{ _zone_data['ttl'] }}
 {% endfor %}
 
 {% for mail in _zone_data['mail'] %}
-{% if loop.first %}@{% else %} {% endif %}                          IN  MX     {{ mail.preference}}  {{ mail.name }}{% if not mail.name.endswith('.') %}.{{ _zone_data['domain'] }}.{% endif %} 
+{{ (mail.zone|default('@', true) if loop.changed(mail.zone) else '').ljust(26) }} IN  MX     {{ mail.preference}}  {{ mail.name }}{% if not mail.name.endswith('.') %}.{{ _zone_data['domain'] }}.{% endif %} 
 {% endfor %}
 
 {% if _zone_data['delegate']|length > 0 %}
@@ -80,46 +97,46 @@ $TTL {{ _zone_data['ttl'] }}
 {% endif %}
 
 {% if _zone_data['hosts']|length > 0 %}
-{% for host in _zone_data['hosts'] %}
-{% if host.ip is defined %}
-{% if host.ip is string %}
-{% if "$GENERATE" not in host.name.upper() %}
+{%   for host in _zone_data['hosts'] %}
+{%     if host.ip is defined %}
+{%       if host.ip is string %}
+{%         if "$GENERATE" not in host.name.upper() %}
 {{ host.name.ljust(20) }}{{ (host.ttl|string).rjust(6) if host.ttl is defined else ''.ljust(6) }} IN  A      {{ host.ip }}
-{% endif %}
-{% if "$GENERATE" in host.name.upper() %}
+{%         endif %}
+{%         if "$GENERATE" in host.name.upper() %}
 {{ host.name.ljust(20) }}{{ (host.ttl|string).rjust(6) if host.ttl is defined else ''.ljust(6) }} IN  A      {{ host.ip }}
-{% endif %}
-{% else %}
-{% for ip in host.ip %}
+{%         endif %}
+{%       else %}
+{%         for ip in host.ip %}
 {{ host.name.ljust(20) }}{{ (host.ttl|string).rjust(6) if host.ttl is defined else ''.ljust(6) }} IN  A      {{ ip }}
-{% endfor %}
-{% endif %}
-{% endif %}
-{% if host.ipv6 is defined %}
-{% if host.ipv6 is string %}
+{%         endfor %}
+{%       endif %}
+{%     endif %}
+{%     if host.ipv6 is defined %}
+{%       if host.ipv6 is string %}
 {{ host.name.ljust(20) }}{{ (host.ttl|string).rjust(6) if host.ttl is defined else ''.ljust(6) }} IN  AAAA   {{ host.ipv6 }}
-{% else %}
-{% for ip6 in host.ipv6 %}
+{%       else %}
+{%         for ip6 in host.ipv6 %}
 {{ host.name.ljust(20) }}{{ (host.ttl|string).rjust(6) if host.ttl is defined else ''.ljust(6) }} IN  AAAA   {{ ip6 }}
-{% endfor %}
-{% endif %}
-{% endif %}
-{% if host.aliases is defined %}
-{% for alias in host.aliases %}
-{% if "$GENERATE" not in host.name.upper() %}
+{%         endfor %}
+{%       endif %}
+{%     endif %}
+{%     if host.aliases is defined %}
+{%       for alias in host.aliases %}
+{%         if "$GENERATE" not in host.name.upper() %}
 {{ (alias.name|default(alias)).ljust(20) }}{{ (host.ttl|string).rjust(6) if host.ttl is defined else ''.ljust(6) }} IN  {{ alias.type|default('cname')|upper}}  {{ host.name }}
-{% endif %}
-{% if "$GENERATE" in host.name.upper() %}
+{%         endif %}
+{%         if "$GENERATE" in host.name.upper() %}
 {{ alias.ljust(20) }} IN  CNAME  {{ host.name.rsplit(None, 1)[1] }}
-{% endif %}
-{% endfor %}
-{% endif %}
-{% if host.sshfp is defined %}
-{% for sshfp in host.sshfp %}
+{%         endif %}
+{%       endfor %}
+{%     endif %}
+{%     if host.sshfp is defined %}
+{%       for sshfp in host.sshfp %}
 {{ host.name.ljust(20) }} IN SSHFP {{ sshfp}}
-{% endfor %}
-{% endif %}
-{% endfor %}
+{%       endfor %}
+{%     endif %}
+{%   endfor %}
 {% else %}
 {{ ansible_hostname.ljust(26) }} IN A     {{ ansible_default_ipv4.address }}
 {% endif %}
@@ -127,13 +144,9 @@ $TTL {{ _zone_data['ttl'] }}
 {{ service.name.ljust(20) }}{{ (service.ttl|string).rjust(6) if service.ttl is defined else ''.ljust(6) }} IN  SRV    {{ service.priority|default('0') }} {{ service.weight|default('0') }} {{ service.port }} {{ service.target }}
 {% endfor %}
 {% for text in _zone_data['text'] %}
-{% if text.text is string %}
-{{ text.name.ljust(20) }} IN  TXT    "{{ text.text }}"
-{% else %}
 {%   for entry in text.text %}
-{{ text.name.ljust(20) }} IN  TXT    "{{ entry }}"
+{{ (text.name if loop.first else '').ljust(26) }} IN  TXT    "{{ entry }}"
 {%   endfor %}
-{% endif %}
 {% endfor %}
 {% for naptr in _zone_data['naptr'] %}
 {{ naptr.name.ljust(20) }} IN  NAPTR  {{ naptr.order|default('100') }} {{ naptr.pref|default('10') }} "{{ naptr.flags }}" "{{ naptr.service }}" "{{ naptr.regex }}" {{ naptr.replacement }}
